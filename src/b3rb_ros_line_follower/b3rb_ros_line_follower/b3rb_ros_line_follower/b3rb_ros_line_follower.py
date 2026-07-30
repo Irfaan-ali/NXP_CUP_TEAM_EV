@@ -145,7 +145,10 @@ class LineFollower(Node):
         # width = message.image_width
         # half_width = width / 2.0
         # For now, we do not modify self.target_turn so the buggy continues straight.
+        
+        # If obstacle avoidance is active, don't overwrite steering
         pass
+
 
     def lidar_callback(self, message):
         """
@@ -162,8 +165,66 @@ class LineFollower(Node):
         # num_readings = len(message.ranges)
         # front_sector = message.ranges[int(num_readings * 7/18): int(num_readings * 11/18)]
         # min_front_dist = min(front_sector)
-        pass
+        
+        ranges = list(message.ranges)
 
+        # Remove invalid readings
+        ranges = [r for r in ranges if r > 0.05]
+
+        if len(ranges) == 0:
+            return
+
+        num = len(message.ranges)
+
+        front = (
+            message.ranges[:15]
+            +
+            message.ranges[-15:]
+        )
+
+        front = [r for r in front if r > 0.05]
+
+        if len(front) == 0:
+            return
+
+        min_front = min(front)
+
+
+        if min_front < 0.8:
+
+            self.obstacle_in_front = True
+
+        else:
+
+            self.obstacle_in_front = False
+
+
+        if self.obstacle_in_front:
+
+            left = message.ranges[70:110]
+            right = message.ranges[250:290]
+
+            left = [r for r in left if r > 0.05]
+            right = [r for r in right if r > 0.05]
+
+            left_space = min(left) if left else 0
+            right_space = min(right) if right else 0
+
+            if left_space > right_space:
+
+                self.target_turn = 0.7
+
+            else:
+
+                self.target_turn = -0.7
+
+            self.target_speed = 0.12
+
+        else:
+
+            self.target_speed = 0.25
+
+            
     def server_communication_callback(self, message):
         """
         Receives coordination commands from the server.
