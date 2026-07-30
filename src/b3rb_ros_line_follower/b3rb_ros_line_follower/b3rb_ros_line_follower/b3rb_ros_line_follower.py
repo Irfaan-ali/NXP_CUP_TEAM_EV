@@ -104,6 +104,20 @@ class LineFollower(Node):
         self.target_speed = 0.15
         self.target_turn = 0.0
 
+        # ---------- Lane Following Parameters ----------
+        self.kp = 0.0045          # Steering gain
+        self.max_speed = 0.35     # Maximum speed
+        self.min_speed = 0.18     # Minimum speed while turning
+
+        # Previous steering (used for smoothing)
+        self.previous_turn = 0.0
+
+        # Estimated lane width in pixels (used if only one lane is detected)
+        self.lane_width_pixels = 220
+
+        # Steering smoothing factor
+        self.alpha = 0.35
+
         # State variables (You can add your own state flags / state machines here)
         self.obstacle_in_front = False
         self.patient_id = None
@@ -145,9 +159,109 @@ class LineFollower(Node):
         # width = message.image_width
         # half_width = width / 2.0
         # For now, we do not modify self.target_turn so the buggy continues straight.
+
+        # -----------------------------
+        # No lane detected
+        # -----------------------------
+        if message.vector_count == 0:
+            self.rover_move_manual_mode(0.0, 0.0)
+            self.get_logger().warn("No lane detected")
+            return
+            
+
+        image_center = message.image_width / 2.0
+            # =====================================================
+        # BOTH LANES DETECTED
+        # =====================================================
+        if message.vector_count == 2:
+
+            # Bottom points
+            left_bottom = message.vector_1[1]
+            right_bottom = message.vector_2[1]
+
+            # Top points
+            left_top = message.vector_1[0]
+            right_top = message.vector_2[0]
+
+            # -----------------------------
+            # Lane centre at bottom
+            # -----------------------------
+            bottom_center = (left_bottom.x + right_bottom.x) / 2.0
+
+            # -----------------------------
+            # Lane centre at top
+            # -----------------------------
+            top_center = (left_top.x + right_top.x) / 2.0
+
+            # -----------------------------
+            # Give higher importance to
+            # bottom of image
+            # -----------------------------
+            lane_center = 0.75 * bottom_center + 0.25 * top_center
+
+        # =====================================================
+        # ONLY ONE LANE DETECTED
+        # =====================================================
+        else:
+
+            if message.vector_1[1].x < image_center:
+
+                # Left lane visible
+                lane_center = (message.vector_1[1].x + self.lane_width_pixels / 2)
+
+            else:
+
+                # Right lane visible
+                lane_center = (message.vector_1[1].x - self.lane_width_pixels / 2)
+
+
+         # =====================================================
+         # Calculate steering error
+         # =====================================================
+
+        error = image_center - lane_center
+
+
+         # =====================================================
+         # Proportional Controller
+         # =====================================================
+
+        turn = self.kp * error
+
+
+         # =====================================================
+         # Clamp steering
+         # =====================================================
+
+        turn = max(TURN_MIN,min(turn, TURN_MAX))
+
+
+         # =====================================================
+         # Steering smoothing
+         # =====================================================
+
+        turn = (self.alpha * turn + (1 - self.alpha) * self.previous_turn)
+
+        self.previous_turn = turn
+
+
+         # =====================================================
+         # Adaptive Speed
+         # =====================================================
+
+        speed = (self.max_speed - abs(turn) * 0.20)
+
+        speed = max(self.min_speed,min(speed,self.max_speed))
+
+         # =====================================================
+         # Send command
+         # =====================================================
+
+        self.rover_move_manual_mode(speed,turn)
         
-        # If obstacle avoidance is active, don't overwrite steering
-        pass
+        self.get_logger().info(f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
+
+
 
 
     def lidar_callback(self, message):
@@ -189,7 +303,7 @@ class LineFollower(Node):
 
         min_front = min(front)
 
-
+        # Obstacle detection
         if min_front < 0.8:
 
             self.obstacle_in_front = True
@@ -198,7 +312,7 @@ class LineFollower(Node):
 
             self.obstacle_in_front = False
 
-
+        # When obstacle detected
         if self.obstacle_in_front:
 
             left = message.ranges[70:110]
@@ -210,6 +324,7 @@ class LineFollower(Node):
             left_space = min(left) if left else 0
             right_space = min(right) if right else 0
 
+            # Compare
             if left_space > right_space:
 
                 self.target_turn = 0.7
@@ -220,6 +335,7 @@ class LineFollower(Node):
 
             self.target_speed = 0.12
 
+        # When obstacle not detected
         else:
 
             self.target_speed = 0.25
@@ -286,3 +402,5 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+
