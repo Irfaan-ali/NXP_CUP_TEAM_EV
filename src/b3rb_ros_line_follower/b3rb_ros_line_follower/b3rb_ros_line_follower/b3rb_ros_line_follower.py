@@ -106,7 +106,7 @@ class LineFollower(Node):
 
         # ---------- Lane Following Parameters ----------
         self.kp = 0.0045          # Steering gain
-        self.max_speed = 0.35     # Maximum speed
+        self.max_speed = 0.45     # Maximum speed
         self.min_speed = 0.18     # Minimum speed while turning
 
         self.lost_lane_counter = 0
