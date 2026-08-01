@@ -105,7 +105,7 @@ class LineFollower(Node):
         self.target_turn = 0.0
 
         # ---------- Lane Following Parameters ----------
-        self.kp = 0.0045          # Steering gain
+        self.kp = 0.008          # Steering gain
         self.max_speed = 0.45     # Maximum speed
         self.min_speed = 0.18     # Minimum speed while turning
 
@@ -119,7 +119,7 @@ class LineFollower(Node):
         self.lane_width_pixels = 220
 
         # Steering smoothing factor
-        self.alpha = 0.35
+        self.alpha = 0.6
 
         # State variables (You can add your own state flags / state machines here)
         self.obstacle_in_front = False
@@ -161,6 +161,8 @@ class LineFollower(Node):
         # width = message.image_width
         # half_width = width / 2.0
         # For now, we do not modify self.target_turn so the buggy continues straight.
+        
+        self.get_logger().info(f"Vectors: {message.vector_count}")
 
         # -----------------------------
         # No lane detected
@@ -199,7 +201,7 @@ class LineFollower(Node):
             # Give higher importance to
             # bottom of image
             # -----------------------------
-            lane_center = 0.75 * bottom_center + 0.25 * top_center
+            lane_center = 0.85 * bottom_center + 0.25 * top_center
 
         # =====================================================
         # ONLY ONE LANE DETECTED
