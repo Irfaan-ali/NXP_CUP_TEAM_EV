@@ -100,9 +100,7 @@ class LineFollower(Node):
 
         # ------------------ State Variables & Timer ------------------
         
-        # Default controls: drive straight slowly
-        self.target_speed = 0.15
-        self.target_turn = 0.0
+
 
         # ---------- Lane Following Parameters ----------
         self.kp = 0.008          # Steering gain
@@ -111,6 +109,8 @@ class LineFollower(Node):
 
         self.lost_lane_counter = 0
         self.last_turn = 0.0
+
+
 
         # Previous steering (used for smoothing)
         self.previous_turn = 0.0
