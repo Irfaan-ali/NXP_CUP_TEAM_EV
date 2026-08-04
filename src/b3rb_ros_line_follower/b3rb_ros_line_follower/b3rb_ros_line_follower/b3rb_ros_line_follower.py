@@ -153,7 +153,17 @@ class LineFollower(Node):
         self.get_logger().info("Line Follower controller initialized. Safe Drive-Straight Mode active.")
 
     def publish_drive_commands(self):
-        self.mission.update()
+        """Timer callback that periodically publishes the current speed and steer command."""
+        if self.obstacle_in_front:
+			self.mission.update()
+            speed = self.avoid_speed
+            turn = self.avoid_turn
+
+        else:
+            speed = self.lane_speed
+            turn = self.lane_turn
+
+        self.rover_move_manual_mode(speed, turn)
         msg = Joy()
         msg.buttons = [1, 0, 0, 0, 0, 0, 0, 1]  # Manual override button configuration
         msg.axes = [0.0, self.target_speed, 0.0, self.target_turn]
