@@ -103,7 +103,7 @@ class LineFollower(Node):
         # ---------------- Lane Following parameters1 ----------------
 
 
-        self.center_offset = -10
+        self.center_offset = -5
 
         # Lane commands
         self.lane_speed = 0.0
@@ -127,10 +127,7 @@ class LineFollower(Node):
         self.max_speed = 0.45     # Maximum speed
         self.min_speed = 0.25     # Minimum speed while turning
 
-        self.lost_lane_counter = 0
         self.last_turn = 0.0
-
-
 
         # Previous steering (used for smoothing)
         self.previous_turn = 0.0
@@ -184,6 +181,9 @@ class LineFollower(Node):
 
         self.get_logger().info(f"Vectors detected : {message.vector_count}")
 
+        if self.obstacle_in_front:
+            return
+
         image_center = message.image_width / 2.0
 
         # ----------------------------------------------------
@@ -192,14 +192,11 @@ class LineFollower(Node):
         if message.vector_count == 0:
 
             # Continue slowly using previous steering
-            speed = 0.12
-            turn = self.previous_turn
+            self.lane_speed = 0.12
+            self.lane_turn = self.previous_turn
 
-            self.rover_move_manual_mode(speed, turn)
             self.get_logger().warn("Lane Lost")
-
             return
-
 
         # ----------------------------------------------------
         # TWO LANES DETECTED
