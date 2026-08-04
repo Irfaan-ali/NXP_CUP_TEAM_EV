@@ -103,7 +103,7 @@ class LineFollower(Node):
         # ---------------- Lane Following parameters1 ----------------
 
 
-        self.center_offset = -5
+        self.center_offset = -10
 
         # Lane commands
         self.lane_speed = 0.3
@@ -181,9 +181,6 @@ class LineFollower(Node):
     def edge_vectors_callback(self, message):
 
         self.get_logger().info(f"Vectors detected : {message.vector_count}")
-
-        if self.obstacle_in_front:
-            return
 
         image_center = message.image_width / 2.0
 
