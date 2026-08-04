@@ -226,7 +226,14 @@ class LineFollower(Node):
         # ----------------------------------------------------
         else:
 
-            lane = message.vector_1
+            v1_length = math.hypot(message.vector_1[1].x - message.vector_1[0].x,message.vector_1[1].y - message.vector_1[0].y)
+
+            v2_length = math.hypot(message.vector_2[1].x - message.vector_2[0].x,message.vector_2[1].y - message.vector_2[0].y)
+
+            if v1_length > v2_length:
+                lane = message.vector_1
+            else:
+                lane = message.vector_2
 
             if lane[1].x < image_center:
 
