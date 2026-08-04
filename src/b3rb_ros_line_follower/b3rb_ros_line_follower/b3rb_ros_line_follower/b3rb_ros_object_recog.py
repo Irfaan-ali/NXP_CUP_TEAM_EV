@@ -181,7 +181,8 @@ class ObjectRecognizer(Node):
 
                 if overlap < MIN_OVERLAP:
                     continue
-
+                    
+                dx = abs(arrow["centre_x"] - location["centre_x"])
                 score = dy + 0.5 * dx
                 
                 if score < best_score:
