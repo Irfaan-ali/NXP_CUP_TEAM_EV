@@ -251,15 +251,13 @@ class LineFollower(Node):
         self.rover_move_manual_mode(speed, turn)
 
         self.get_logger().info(
-            f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}"
-        )
-
+            f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
 
 
     def lidar_callback(self, message):
-    """
-    LIDAR obstacle detection and avoidance.
-    """
+        """
+        LIDAR obstacle detection and avoidance.
+        """
 
         ranges = message.ranges
         num = len(ranges)
