@@ -100,10 +100,30 @@ class LineFollower(Node):
 
         # ------------------ State Variables & Timer ------------------
         
+        # ---------------- Lane Following parameters1 ----------------
 
+
+        self.center_offset = -10
+
+        # Lane commands
+        self.lane_speed = 0.0
+        self.lane_turn = 0.0
+
+        # Obstacle commands
+        self.avoid_speed = 0.0
+        self.avoid_turn = 0.0
+
+        # Obstacle state
+        self.obstacle_in_front = False
+
+        # Distances
+        self.front_distance = 10.0
+        self.left_distance = 10.0
+        self.right_distance = 10.0
+        self.back_distance = 10.0
 
         # ---------- Lane Following Parameters ----------
-        self.kp = 0.008          # Steering gain
+        self.kp = 0.006         # Steering gain
         self.max_speed = 0.45     # Maximum speed
         self.min_speed = 0.25     # Minimum speed while turning
 
@@ -119,7 +139,7 @@ class LineFollower(Node):
         self.lane_width_pixels = 220
 
         # Steering smoothing factor
-        self.alpha = 0.6
+        self.alpha = 0.82
 
         # State variables (You can add your own state flags / state machines here)
         self.obstacle_in_front = False
@@ -185,7 +205,7 @@ class LineFollower(Node):
             top_center = (left_top.x + right_top.x) / 2.0
 
             # Bottom is more important than top
-            lane_center = 0.8 * bottom_center + 0.2 * top_center
+            lane_center = 0.9 * bottom_center + 0.1 * top_center
 
 
         # ----------------------------------------------------
@@ -209,7 +229,7 @@ class LineFollower(Node):
         # ----------------------------------------------------
         # Calculate Error
         # ----------------------------------------------------
-        error = image_center - lane_center
+        error = (image_center + self.center_offset) - lane_center
 
 
         # ----------------------------------------------------
@@ -248,59 +268,81 @@ class LineFollower(Node):
         # ----------------------------------------------------
         # Send command
         # ----------------------------------------------------
-        self.rover_move_manual_mode(speed, turn)
+        self.lane_speed = speed
+        self.lane_turn = turn
 
         self.get_logger().info(f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
 
 
     def lidar_callback(self, message):
-        """
-        LIDAR obstacle detection and avoidance.
-        """
+        """LIDAR obstacle detection and avoidance."""
 
-        ranges = message.ranges
-        num = len(ranges)
+        ranges = list(message.ranges)
 
-        if num == 0:
+        if len(ranges) == 0:
             return
 
-        # -------------------------------------------------
-        # Helper function
-        # -------------------------------------------------
+        num_readings = len(ranges)
+
+        # -------------------------------------------------------
+        # Remove invalid readings
+        # -------------------------------------------------------
+
         def valid(data):
             return [
                 r for r in data
                 if math.isfinite(r) and 0.05 < r < 10.0
             ]
 
-        # -------------------------------------------------
-        # Scan sectors
-        # -------------------------------------------------
+        # -------------------------------------------------------
+        # FRONT SECTOR
+        # Used for obstacle detection
+        # -------------------------------------------------------
 
-        front = valid(ranges[:num//24] + ranges[-num//24:])
+        front = valid(ranges[int(num_readings * 7 / 18):int(num_readings * 11 / 18)])
 
-        left = valid(ranges[num//5 : num//3])
+        # -------------------------------------------------------
+        # LEFT SECTOR
+        # Used to choose avoidance direction
+        # -------------------------------------------------------
 
-        right = valid(ranges[2*num//3 : 4*num//5])
+        left = valid(ranges[int(num_readings * 11 / 18):int(num_readings * 14 / 18)])
 
-        if not front:
-            return
+        # -------------------------------------------------------
+        # RIGHT SECTOR
+        # Used to choose avoidance direction
+        # -------------------------------------------------------
 
-        # -------------------------------------------------
-        # Distance measurements
-        # -------------------------------------------------
+        right = valid(ranges[int(num_readings * 4 / 18):int(num_readings * 7 / 18)])
 
-        front_dist = min(front)
+        # -------------------------------------------------------
+        # BACK SECTOR
+        # Useful if reverse is ever needed
+        # -------------------------------------------------------
 
+        back = valid(ranges[int(num_readings * 16 / 18):]+ranges[:int(num_readings * 2 / 18)])
+
+        # -------------------------------------------------------
+        # Minimum distances
+        # -------------------------------------------------------
+
+        front_dist = min(front) if front else 10.0
         left_dist = min(left) if left else 10.0
         right_dist = min(right) if right else 10.0
+        back_dist = min(back) if back else 10.0
 
-        # -------------------------------------------------
+        self.front_distance = front_dist
+        self.left_distance = left_dist
+        self.right_distance = right_dist
+        self.back_distance = back_dist
+
+        # -------------------------------------------------------
         # Hysteresis
-        # -------------------------------------------------
+        # Prevents obstacle flag from rapidly toggling
+        # -------------------------------------------------------
 
-        ENTER_DISTANCE = 0.75
-        EXIT_DISTANCE = 0.90
+        ENTER_DISTANCE = 0.80
+        EXIT_DISTANCE = 1.00
 
         if self.obstacle_in_front:
 
@@ -312,36 +354,43 @@ class LineFollower(Node):
             if front_dist < ENTER_DISTANCE:
                 self.obstacle_in_front = True
 
-        # -------------------------------------------------
-        # Obstacle avoidance
-        # -------------------------------------------------
+        # -------------------------------------------------------
+        # Obstacle Avoidance
+        # -------------------------------------------------------
 
         if self.obstacle_in_front:
 
-            self.target_speed = 0.12
+            # Slow down
+            self.avoid_speed = 0.18
 
+            # Turn toward the side with more free space
             if left_dist > right_dist:
-                desired_turn = 0.65
+
+                desired_turn = 0.85
+
             else:
-                desired_turn = -0.65
+
+                desired_turn = -0.85
 
             # Smooth steering
-            self.target_turn = (0.30 * desired_turn + 0.70 * self.target_turn)
-
-        # -------------------------------------------------
-        # Normal driving
-        # -------------------------------------------------
+            self.avoid_turn = (0.35 * desired_turn + 0.65 * self.avoid_turn)
 
         else:
 
-            self.target_speed = 0.25
+            # Lane follower takes control
+            self.avoid_speed = 0.0
+            self.avoid_turn = 0.0
 
-        # -------------------------------------------------
-        # Debug
-        # -------------------------------------------------
+        # -------------------------------------------------------
+        # Debug Information
+        # -------------------------------------------------------
 
-        self.get_logger().info(f"Front={front_dist:.2f}  " f"Left={left_dist:.2f}  " f"Right={right_dist:.2f}  " f"Obstacle={self.obstacle_in_front}" )
-
+        self.get_logger().info(
+            f"Front={front_dist:.2f}m | "
+            f"Left={left_dist:.2f}m | "
+            f"Right={right_dist:.2f}m | "
+            f"Back={back_dist:.2f}m | "
+            f"Obstacle={self.obstacle_in_front}")
             
     def server_communication_callback(self, message):
         """
