@@ -147,6 +147,8 @@ class LineFollower(Node):
         self.hospital_id = None
         self.current_destination = None
         self.mission_completed = False
+        self.target_speed = 0.0
+        self.target_turn = 0.0
 
         # Timer to publish drive commands at 10Hz
         self.control_timer = self.create_timer(0.1, self.publish_drive_commands)
