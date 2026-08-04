@@ -165,6 +165,7 @@ class LineFollower(Node):
             turn = self.lane_turn
 
         self.rover_move_manual_mode(speed, turn)
+        
         msg = Joy()
         msg.buttons = [1, 0, 0, 0, 0, 0, 0, 1]  # Manual override button configuration
         msg.axes = [0.0, self.target_speed, 0.0, self.target_turn]
