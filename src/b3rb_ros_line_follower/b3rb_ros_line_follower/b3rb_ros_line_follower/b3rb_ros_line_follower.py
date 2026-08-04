@@ -157,6 +157,17 @@ class LineFollower(Node):
 
     def publish_drive_commands(self):
         """Timer callback that periodically publishes the current speed and steer command."""
+        if self.obstacle_in_front:
+
+            speed = self.avoid_speed
+            turn = self.avoid_turn
+
+        else:
+
+            speed = self.lane_speed
+            turn = self.lane_turn
+
+        self.rover_move_manual_mode(speed, turn)
         msg = Joy()
         msg.buttons = [1, 0, 0, 0, 0, 0, 0, 1]  # Manual override button configuration
         msg.axes = [0.0, self.target_speed, 0.0, self.target_turn]
