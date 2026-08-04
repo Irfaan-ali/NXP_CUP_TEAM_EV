@@ -103,30 +103,30 @@ class LineFollower(Node):
 
 
         # ---------- Lane Following Parameters ----------
-        self.kp = 0.008          # Steering gain
-        self.max_speed = 0.45     # Maximum speed
-        self.min_speed = 0.18     # Minimum speed while turning
+        
 
-        self.lost_lane_counter = 0
-        self.last_turn = 0.0
-
-
-
-        # Previous steering (used for smoothing)
-        self.previous_turn = 0.0
-
-        # Estimated lane width in pixels (used if only one lane is detected)
-        self.lane_width_pixels = 220
-
-        # Steering smoothing factor
-        self.alpha = 0.6
+        # Default controls: drive straight slowly
+        self.target_speed = 0.5
+        self.target_turn = 0.0
 
         # State variables (You can add your own state flags / state machines here)
-        self.obstacle_in_front = False
+        self.current_location_qr = False
+        self.lidar_ph_override = False
+        self.obstacle_in_froht = False
+        self.near_building= False
         self.patient_id = None
         self.hospital_id = None
-        self.current_destination = None
+        self.current_destination = "A" #Default destinition is patient A
         self.mission_completed = False
+
+        self.latest_sign_board_info = {"A": 7, "B": 7, "C": 7, "X": 7, "Y": 7, "Z": 7}
+
+        self.latest_uid = -1
+        self.latest_ack = -1
+
+        self.current_uid = 10
+
+        self.on_destination = False
 
         # Timer to publish drive commands at 10Hz
         self.control_timer = self.create_timer(0.1, self.publish_drive_commands)
@@ -162,110 +162,45 @@ class LineFollower(Node):
         # half_width = width / 2.0
         # For now, we do not modify self.target_turn so the buggy continues straight.
         
-        self.get_logger().info(f"Vectors: {message.vector_count}")
+        speed = SPEED_MAX
+        turn = 0
 
-        # -----------------------------
-        # No lane detected
-        # -----------------------------
-        if message.vector_count == 0:
-            self.rover_move_manual_mode(0.0, 0.0)
-            self.get_logger().warn("No lane detected")
+        if self.on_destination == True:
+            self.rover_move_manual_mode(0, 0)
             return
-            
 
-        image_center = message.image_width / 2.0
-            # =====================================================
-        # BOTH LANES DETECTED
-        # =====================================================
-        if message.vector_count == 2:
+        if self.current_destination == "0":
+            self.rover_move_manual_mode(0, 0)
+            return
 
-            # Bottom points
-            left_bottom = message.vector_1[1]
-            right_bottom = message.vector_2[1]
+        vectors = message
+        half_width = vectors.image_width / 2
 
-            # Top points
-            left_top = message.vector_1[0]
-            right_top = message.vector_2[0]
-
-            # -----------------------------
-            # Lane centre at bottom
-            # -----------------------------
-            bottom_center = (left_bottom.x + right_bottom.x) / 2.0
-
-            # -----------------------------
-            # Lane centre at top
-            # -----------------------------
-            top_center = (left_top.x + right_top.x) / 2.0
-
-            # -----------------------------
-            # Give higher importance to
-            # bottom of image
-            # -----------------------------
-            lane_center = 0.85 * bottom_center + 0.25 * top_center
-
-        # =====================================================
-        # ONLY ONE LANE DETECTED
-        # =====================================================
-        else:
-
-            if message.vector_1[1].x < image_center:
-
-                # Left lane visible
-                lane_center = (message.vector_1[1].x + self.lane_width_pixels / 2)
-
+        if (vectors.vector_count == 0): # none.
+            speed = 0.2
+            if self.latest_sign_board_info[self.current_destination] != 7:
+                turn = self.latest_sign_board_info[self.current_destination] * -1
             else:
+                turn = 0
 
-                # Right lane visible
-                lane_center = (message.vector_1[1].x - self.lane_width_pixels / 2)
+        if (vectors.vector_count == 1): # curve.
+            # Calculate the magnitude of the x-component of the vector.
+            deviation = vectors.vector_1[1].x - vectors.vector_1[0].x
+            turn = deviation / half width
 
+        if (vectors.vector_count == 2): # straight.
+            # Calculate the middle point of the x-components of the vectors.
+            middle_x_left = (vectors.vector_1[0].x + vectors.vector_1[1].x) / 2
+            middle_x_right = (vectors.vector_2[0].x + vectors.vector_2[1].x) / 2
+            middle_x = (middle_x_left + middle_x_right) / 2
+            deviation = half_width - middle_x
+            turn = deviation / half width
+            speed = speed
 
-         # =====================================================
-         # Calculate steering error
-         # =====================================================
+        if turn > 0.4 or turn < -0.4:
+            speed = 0.2
 
-        error = image_center - lane_center
-
-
-         # =====================================================
-         # Proportional Controller
-         # =====================================================
-
-        turn = self.kp * error
-
-
-         # =====================================================
-         # Clamp steering
-         # =====================================================
-
-        turn = max(TURN_MIN,min(turn, TURN_MAX))
-
-
-         # =====================================================
-         # Steering smoothing
-         # =====================================================
-
-        turn = (self.alpha * turn + (1 - self.alpha) * self.previous_turn)
-
-        self.previous_turn = turn
-
-
-         # =====================================================
-         # Adaptive Speed
-         # =====================================================
-
-        speed = (self.max_speed - abs(turn) * 0.20)
-
-        speed = max(self.min_speed,min(speed,self.max_speed))
-
-         # =====================================================
-         # Send command
-         # =====================================================
-
-        self.rover_move_manual_mode(speed,turn)
-        
-        self.get_logger().info(f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
-
-
+        self.rover_move_manual_mode(speed, turn)
 
     def lidar_callback(self, message):
         """
