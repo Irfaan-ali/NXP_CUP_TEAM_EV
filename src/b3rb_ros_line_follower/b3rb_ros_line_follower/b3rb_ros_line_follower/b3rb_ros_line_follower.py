@@ -105,7 +105,7 @@ class LineFollower(Node):
         # ---------- Lane Following Parameters ----------
         self.kp = 0.008          # Steering gain
         self.max_speed = 0.45     # Maximum speed
-        self.min_speed = 0.18     # Minimum speed while turning
+        self.min_speed = 0.25     # Minimum speed while turning
 
         self.lost_lane_counter = 0
         self.last_turn = 0.0
@@ -148,35 +148,29 @@ class LineFollower(Node):
     # ------------------ Callback Implementations ------------------
 
     def edge_vectors_callback(self, message):
-        """Receives lane boundaries from the camera vector extractor.
-        
-        GUIDELINE (Lane Following):
-        - `message.vector_count` contains the number of active bounds seen (0, 1, or 2).
-        - `message.vector_1` and `message.vector_2` contain the points defining the bounds.
-        - You need to write logic to compute the centerline deviation and adjust `self.target_turn`.
-        - E.g., if only one line is seen, steer away from it to keep distance; if two lines are seen,
-          calculate the midpoint relative to the image width and steer to center the buggy.
-        """
-        # HINTS:
-        # width = message.image_width
-        # half_width = width / 2.0
-        # For now, we do not modify self.target_turn so the buggy continues straight.
-        
-        self.get_logger().info(f"Vectors: {message.vector_count}")
 
-        # -----------------------------
-        # No lane detected
-        # -----------------------------
-        if message.vector_count == 0:
-            self.rover_move_manual_mode(0.0, 0.0)
-            self.get_logger().warn("No lane detected")
-            return
-            
+        self.get_logger().info(f"Vectors detected : {message.vector_count}")
 
         image_center = message.image_width / 2.0
-            # =====================================================
-        # BOTH LANES DETECTED
-        # =====================================================
+
+        # ----------------------------------------------------
+        # NO LANE DETECTED
+        # ----------------------------------------------------
+        if message.vector_count == 0:
+
+            # Continue slowly using previous steering
+            speed = 0.12
+            turn = self.previous_turn
+
+            self.rover_move_manual_mode(speed, turn)
+            self.get_logger().warn("Lane Lost")
+
+            return
+
+
+        # ----------------------------------------------------
+        # TWO LANES DETECTED
+        # ----------------------------------------------------
         if message.vector_count == 2:
 
             # Bottom points
@@ -187,161 +181,173 @@ class LineFollower(Node):
             left_top = message.vector_1[0]
             right_top = message.vector_2[0]
 
-            # -----------------------------
-            # Lane centre at bottom
-            # -----------------------------
             bottom_center = (left_bottom.x + right_bottom.x) / 2.0
-
-            # -----------------------------
-            # Lane centre at top
-            # -----------------------------
             top_center = (left_top.x + right_top.x) / 2.0
 
-            # -----------------------------
-            # Give higher importance to
-            # bottom of image
-            # -----------------------------
-            lane_center = 0.85 * bottom_center + 0.25 * top_center
+            # Bottom is more important than top
+            lane_center = 0.8 * bottom_center + 0.2 * top_center
 
-        # =====================================================
-        # ONLY ONE LANE DETECTED
-        # =====================================================
+
+        # ----------------------------------------------------
+        # ONE LANE DETECTED
+        # ----------------------------------------------------
         else:
 
-            if message.vector_1[1].x < image_center:
+            lane = message.vector_1
 
-                # Left lane visible
-                lane_center = (message.vector_1[1].x + self.lane_width_pixels / 2)
+            if lane[1].x < image_center:
+
+                # Left lane
+                lane_center = lane[1].x + self.lane_width_pixels / 2
 
             else:
 
-                # Right lane visible
-                lane_center = (message.vector_1[1].x - self.lane_width_pixels / 2)
+                # Right lane
+                lane_center = lane[1].x - self.lane_width_pixels / 2
 
 
-         # =====================================================
-         # Calculate steering error
-         # =====================================================
-
+        # ----------------------------------------------------
+        # Calculate Error
+        # ----------------------------------------------------
         error = image_center - lane_center
 
 
-         # =====================================================
-         # Proportional Controller
-         # =====================================================
-
+        # ----------------------------------------------------
+        # Proportional Steering
+        # ----------------------------------------------------
         turn = self.kp * error
 
 
-         # =====================================================
-         # Clamp steering
-         # =====================================================
+        # ----------------------------------------------------
+        # Clamp
+        # ----------------------------------------------------
+        turn = max(TURN_MIN, min(turn, TURN_MAX))
 
-        turn = max(TURN_MIN,min(turn, TURN_MAX))
 
-
-         # =====================================================
-         # Steering smoothing
-         # =====================================================
-
+        # ----------------------------------------------------
+        # Steering Smoothing
+        # ----------------------------------------------------
         turn = (self.alpha * turn + (1 - self.alpha) * self.previous_turn)
 
         self.previous_turn = turn
 
 
-         # =====================================================
-         # Adaptive Speed
-         # =====================================================
+        # ----------------------------------------------------
+        # Adaptive Speed
+        # ----------------------------------------------------
+        speed = self.max_speed - abs(turn) * 0.20
 
-        speed = (self.max_speed - abs(turn) * 0.20)
+        speed = max(self.min_speed,min(speed, self.max_speed))
 
-        speed = max(self.min_speed,min(speed,self.max_speed))
 
-         # =====================================================
-         # Send command
-         # =====================================================
+        # Extra slowdown for single lane
+        if message.vector_count == 1:
+            speed *= 0.90
 
-        self.rover_move_manual_mode(speed,turn)
-        
-        self.get_logger().info(f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
+
+        # ----------------------------------------------------
+        # Send command
+        # ----------------------------------------------------
+        self.rover_move_manual_mode(speed, turn)
+
+        self.get_logger().info(
+            f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}"
+        )
 
 
 
     def lidar_callback(self, message):
-        """
-        Receives LIDAR range measurements.
-        
-        GUIDELINE (Obstacle Avoidance & Building Range):
-        - `message.ranges` is an array of distances in meters around the buggy.
-        - The laser scans cover 360 degrees. Find which indices correspond to the front of the buggy.
-        - If a range value in the front sector is below a threshold (e.g. 0.8m), flag an obstacle.
-        - Write obstacle avoidance maneuvers (e.g. stop, steer left/right around the block, and merge back).
-        - Use LIDAR side-ranges to verify distance to building/QR signs before patient pickup/hospital drop actions.
-        """
-        # HINTS:
-        # num_readings = len(message.ranges)
-        # front_sector = message.ranges[int(num_readings * 7/18): int(num_readings * 11/18)]
-        # min_front_dist = min(front_sector)
-        
-        ranges = list(message.ranges)
+    """
+    LIDAR obstacle detection and avoidance.
+    """
 
-        # Remove invalid readings
-        ranges = [r for r in ranges if r > 0.05]
+        ranges = message.ranges
+        num = len(ranges)
 
-        if len(ranges) == 0:
+        if num == 0:
             return
 
-        num = len(message.ranges)
+        # -------------------------------------------------
+        # Helper function
+        # -------------------------------------------------
+        def valid(data):
+            return [
+                r for r in data
+                if math.isfinite(r) and 0.05 < r < 10.0
+            ]
 
-        front = (
-            message.ranges[:15]
-            +
-            message.ranges[-15:]
-        )
+        # -------------------------------------------------
+        # Scan sectors
+        # -------------------------------------------------
 
-        front = [r for r in front if r > 0.05]
+        front = valid(ranges[:num//24] + ranges[-num//24:])
 
-        if len(front) == 0:
+        left = valid(ranges[num//5 : num//3])
+
+        right = valid(ranges[2*num//3 : 4*num//5])
+
+        if not front:
             return
 
-        min_front = min(front)
+        # -------------------------------------------------
+        # Distance measurements
+        # -------------------------------------------------
 
-        # Obstacle detection
-        if min_front < 0.8:
+        front_dist = min(front)
 
-            self.obstacle_in_front = True
+        left_dist = min(left) if left else 10.0
+        right_dist = min(right) if right else 10.0
+
+        # -------------------------------------------------
+        # Hysteresis
+        # -------------------------------------------------
+
+        ENTER_DISTANCE = 0.75
+        EXIT_DISTANCE = 0.90
+
+        if self.obstacle_in_front:
+
+            if front_dist > EXIT_DISTANCE:
+                self.obstacle_in_front = False
 
         else:
 
-            self.obstacle_in_front = False
+            if front_dist < ENTER_DISTANCE:
+                self.obstacle_in_front = True
 
-        # When obstacle detected
+        # -------------------------------------------------
+        # Obstacle avoidance
+        # -------------------------------------------------
+
         if self.obstacle_in_front:
-
-            left = message.ranges[70:110]
-            right = message.ranges[250:290]
-
-            left = [r for r in left if r > 0.05]
-            right = [r for r in right if r > 0.05]
-
-            left_space = min(left) if left else 0
-            right_space = min(right) if right else 0
-
-            # Compare
-            if left_space > right_space:
-
-                self.target_turn = 0.7
-
-            else:
-
-                self.target_turn = -0.7
 
             self.target_speed = 0.12
 
-        # When obstacle not detected
+            if left_dist > right_dist:
+                desired_turn = 0.65
+            else:
+                desired_turn = -0.65
+
+            # Smooth steering
+            self.target_turn = (0.30 * desired_turn + 0.70 * self.target_turn)
+
+        # -------------------------------------------------
+        # Normal driving
+        # -------------------------------------------------
+
         else:
 
             self.target_speed = 0.25
+
+        # -------------------------------------------------
+        # Debug
+        # -------------------------------------------------
+
+        self.get_logger().info(
+            f"Front={front_dist:.2f}  "
+            f"Left={left_dist:.2f}  "
+            f"Right={right_dist:.2f}  "
+            f"Obstacle={self.obstacle_in_front}" )
 
             
     def server_communication_callback(self, message):
