@@ -20,6 +20,7 @@ import math
 from sensor_msgs.msg import Joy, LaserScan
 from std_msgs.msg import String
 from synapse_msgs.msg import EdgeVectors, ServerCommunication
+from mission_controller import MissionController
 
 QOS_PROFILE_DEFAULT = 10
 PI = math.pi
@@ -140,32 +141,19 @@ class LineFollower(Node):
 
         # State variables (You can add your own state flags / state machines here)
         self.obstacle_in_front = False
-        self.patient_id = None
-        self.hospital_id = None
-        self.current_destination = None
-        self.mission_completed = False
         self.target_speed = 0.0
         self.target_turn = 0.0
 
+		# ---------------- Mission Controller ----------------
+		self.mission = MissionController(self)
+		
         # Timer to publish drive commands at 10Hz
         self.control_timer = self.create_timer(0.1, self.publish_drive_commands)
 
         self.get_logger().info("Line Follower controller initialized. Safe Drive-Straight Mode active.")
 
     def publish_drive_commands(self):
-        """Timer callback that periodically publishes the current speed and steer command."""
-        if self.obstacle_in_front:
-
-            speed = self.avoid_speed
-            turn = self.avoid_turn
-
-        else:
-
-            speed = self.lane_speed
-            turn = self.lane_turn
-
-        self.rover_move_manual_mode(speed, turn)
-        
+        self.mission.update()
         msg = Joy()
         msg.buttons = [1, 0, 0, 0, 0, 0, 0, 1]  # Manual override button configuration
         msg.axes = [0.0, self.target_speed, 0.0, self.target_turn]
@@ -371,6 +359,10 @@ class LineFollower(Node):
 
         if self.obstacle_in_front:
 
+			self.mission.update_obstacle(
+   				self.obstacle_in_front	
+			)		
+
             # Slow down
             self.avoid_speed = 0.18
 
@@ -404,52 +396,37 @@ class LineFollower(Node):
             f"Obstacle={self.obstacle_in_front}")
             
     def server_communication_callback(self, message):
-        """
-        Receives coordination commands from the server.
-        
-        GUIDELINE (Server Communication):
-        - Check if the message is destined for the Buggy (`message.dest == 1`).
-		- Do not forget to check for ACK messages from server
-        - The server communicates mission info in the `message.msg` payload string.
-        - Parse server instructions (e.g., patient pickup, target hospitals).
-        - Call `self.send_server_update` to report your status when you reach a checkpoint.
-        """
-        if message.dest == 1:
-            self.get_logger().info(f"Received Server Message: {message.msg}")
-            # Parse payload and update state machine destination/objectives here
-            pass
+    
+            self.mission.update_server(message)
 
-    def send_server_update(self, text_msg):
-        """Sends status messages to the server. (Do not forget to send ACK messages to server)"""
-        server_msg = ServerCommunication()
-        server_msg.src = 1       # Source component: Buggy-1
-        server_msg.dest = 2      # Destination component: Server-2
-        server_msg.uid = 100     # Replace with a rolling message ID/counter
-        server_msg.ack = 0
-        server_msg.msg = text_msg
-        self.publisher_server.publish(server_msg)
+	def send_server_packet(
+
+   	 	self,
+    	uid,
+    	ack,
+    	payload	
+	):
+
+    	server_msg = ServerCommunication()
+    	server_msg.src = 1
+   		server_msg.dest = 2
+    	server_msg.uid = uid
+    	server_msg.ack = ack
+    	server_msg.msg = payload
+    	self.publisher_server.publish(server_msg)
 
     def qr_detection_callback(self, message):
-        """
-        Receives QR codes scanned from the buildings.
-        
-        GUIDELINE (Patient/Hospital Identification):
-        - Parse the decoded string payload in `message.data` (e.g. "PATIENT_A", "HOSPITAL_B").
-        - If it matches your target destination, stop the vehicle close to the building (verify range using LIDAR),
-          perform the action (pick patient / drop patient), and communicate the arrival to the server.
-        """
-        self.get_logger().info(f"Heard QR code: {message.data}")
-        pass
+		
+        self.mission.update_qr(message.data)
 
     def sign_board_callback(self, message):
-        """
-        Receives traffic sign boards.
-        
-        GUIDELINE (Sign Board Routing):
-        - Use the detected signs to choose the quickest route at intersections.
-        """
-        self.get_logger().info(f"Heard Sign Board: {message.data}")
-        pass
+        import json
+		try:
+			sign_map = json.loads(message.data)
+    		self.mission.update_sign(sign_map)
+
+		except Exception as e:
+    		self.get_logger().error(f"Failed to parse sign map: {e}")
 
 def main(args=None):
     rclpy.init(args=args)
