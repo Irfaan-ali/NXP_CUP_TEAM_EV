@@ -88,7 +88,7 @@ class MissionController:
 
         self.current_patient = None
         self.assigned_hospital = None
-        self.current_sign = None
+        self.sign_map = None
         self.latest_qr = None
         self.last_qr = None
         self.qr_detected = False
@@ -392,9 +392,9 @@ class MissionController:
 
     # ----------------------------------------------------------
 
-    def update_sign(self, sign):
+    def update_sign(self, mapping):
 
-        self.current_sign = sign
+        self.sign_map = mapping
         self.sign_detected = True
 
     # ----------------------------------------------------------
@@ -572,17 +572,16 @@ class MissionController:
 
     def follow_lane(self):
 
-        """
-        Placeholder.
-
-        Person 1's lane follower
-        naturally controls the buggy.
-
-        Mission Controller only decides
-        WHEN lane following should happen.
-        """
-
-        pass
+        if self.robot.obstacle_in_front:
+            self.robot.rover_move_manual_mode(
+                self.robot.avoid_speed,
+                self.robot.avoid_turn
+            )
+        else:
+            self.robot.rover_move_manual_mode(
+                self.robot.lane_speed,
+                self.robot.lane_turn
+            )
 
     # ----------------------------------------------------------
 
@@ -593,10 +592,7 @@ class MissionController:
 
     def park_robot(self):
 
-        """
-        Placeholder for parking logic.
-        """
-        pass
+        self.robot.rover_move_manual_mode(0.0, 0.0)
 
     # ==========================================================
     # Logging Helpers
