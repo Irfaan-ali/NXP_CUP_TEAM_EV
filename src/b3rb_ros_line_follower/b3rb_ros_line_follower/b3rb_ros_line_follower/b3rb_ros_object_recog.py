@@ -20,13 +20,16 @@ import cv2
 import numpy as np
 import os
 
+from collections import deque, Counter
+
 # HINT: TensorFlow/Keras can be heavy and might not be installed by default.
 # We wrap the import in a try-except block so the node runs even if TensorFlow is missing.
 # Install it using: pip install tensorflow
+
 try:
-    import tensorflow as tf
+    from ultralytics import YOLO
 except ImportError:
-    tf = None
+    YOLO = None
 
 class ObjectRecognizer(Node):
     """
@@ -35,6 +38,33 @@ class ObjectRecognizer(Node):
     """
     def __init__(self):
         super().__init__('object_recognizer')
+        self.confirmed_pairs = {
+
+            "A":"NotDetected",
+            "B":"NotDetected",
+            "C":"NotDetected",
+            "X":"NotDetected",
+            "Y":"NotDetected",
+            "Z":"NotDetected"
+
+        }
+
+        # Store the last 5 observations for each location
+        self.history = {
+
+            "A": deque(maxlen=5),
+            "B": deque(maxlen=5),
+            "C": deque(maxlen=5),
+            "X": deque(maxlen=5),
+            "Y": deque(maxlen=5),
+            "Z": deque(maxlen=5)
+
+        }
+
+        self.locked_locations = set()
+        self.CONFIRMATION_THRESHOLD = 3
+        MIN_OVERLAP = 20
+        self.VERTICAL_THRESHOLD = 200
 
         # Subscription for camera images.
         self.subscription_camera = self.create_subscription(
@@ -49,21 +79,38 @@ class ObjectRecognizer(Node):
             '/sign_board_detection',
             10)
 
-        # Attempt to load the pre-trained Keras model (model.h5) located in the same directory.
+        # Attempt to load the pre-trained YOLO model (best.pt) located in the same directory.
         self.model = None
-        if tf is not None:
+
+        if YOLO is not None:
             try:
                 dir_path = os.path.dirname(os.path.abspath(__file__))
-                model_path = os.path.join(dir_path, 'model.h5')
+                model_path = os.path.join(dir_path, "best.pt")
+
                 if os.path.exists(model_path):
-                    self.model = tf.keras.models.load_model(model_path)
-                    self.get_logger().info(f"Loaded Keras model from {model_path}")
+
+                    self.model = YOLO(model_path)
+
+                    self.get_logger().info(
+                        f"Loaded YOLO model from {model_path}"
+                    )
+
                 else:
-                    self.get_logger().warn(f"Model file not found at {model_path}")
+                    self.get_logger().warn(
+                        f"best.pt not found at {model_path}"
+                    )
+
             except Exception as e:
-                self.get_logger().error(f"Failed to load Keras model: {e}")
+
+                self.get_logger().error(
+                    f"Failed to load YOLO model : {e}"
+                )
+
         else:
-            self.get_logger().warn("TensorFlow is not installed. Running in CV/Placeholder mode.")
+
+            self.get_logger().warn(
+                "Ultralytics not installed."
+            )
 
         self.get_logger().info("Object Recognizer Node started. Waiting for images...")
 
@@ -73,13 +120,123 @@ class ObjectRecognizer(Node):
         np_arr = np.frombuffer(message.data, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-        sign_detected = self.classify_sign(image)
+        detections = self.classify_sign(image)
 
-        if sign_detected is not None:
-            msg = String()
-            msg.data = sign_detected
-            self.publisher_sign.publish(msg)
-            self.get_logger().info(f"Detected Sign Board: {sign_detected}")
+        if detections is None:
+            return
+
+        # Separate locations and arrows
+
+        locations = []
+        arrows = []
+
+        for obj in detections:
+
+            if obj["label"] in ["A","B","C","X","Y","Z"]:
+                locations.append(obj)
+
+            elif obj["label"] in ["Left","Right","Straight"]:
+                arrows.append(obj)
+
+        if len(locations) == 0 or len(arrows) == 0:
+            return
+
+
+        # Initialise result
+
+        detected_pairs = {
+
+            "A":"NotDetected",
+            "B":"NotDetected",
+            "C":"NotDetected",
+            "X":"NotDetected",
+            "Y":"NotDetected",
+            "Z":"NotDetected"
+
+        }
+
+        used_arrows = set()
+
+        for location in locations:
+
+            best_arrow = None
+
+            best_score = 1e9
+
+            for i, arrow in enumerate(arrows):
+
+                if i in used_arrows:
+                    continue
+
+                # Arrow MUST be below
+
+                dy = arrow["centre_y"] - location["centre_y"]
+
+                if dy <= 0 or dy > self.VERTICAL_THRESHOLD:
+                    continue
+                
+                # Horizontal overlap
+                
+                overlap = min(location["x2"], arrow["x2"]) - max(location["x1"], arrow["x1"])
+
+                if overlap < MIN_OVERLAP:
+                    continue
+
+                score = dy + 0.5 * dx
+                
+                if score < best_score:
+
+                    best_score = score
+
+                    best_arrow = i
+
+            if best_arrow is not None:
+
+                detected_pairs[
+                    location["label"]
+                ] = arrows[
+                    best_arrow
+                ]["label"]
+
+                used_arrows.add(best_arrow)
+
+        for location, direction in detected_pairs.items():
+
+            # Already learned -> skip forever
+            if location in self.locked_locations:
+                continue
+
+            # Ignore if nothing detected this frame
+            if direction == "NotDetected":
+                continue
+
+            # Add current observation to history
+            self.history[location].append(direction)
+
+            # Count occurrences in the last 5 frames
+            votes = Counter(self.history[location])
+
+            most_common_direction, count = votes.most_common(1)[0]
+
+            if count >= self.CONFIRMATION_THRESHOLD:
+
+                self.confirmed_pairs[location] = most_common_direction
+
+                self.locked_locations.add(location)
+
+                self.history[location].clear()
+
+                self.get_logger().info(
+                    f"{location} locked as {most_common_direction}"
+                )
+
+        msg = String()
+
+        msg.data = str(self.confirmed_pairs)
+
+        self.publisher_sign.publish(msg)
+
+        self.get_logger().info(msg.data)
 
     def classify_sign(self, image):
         """
@@ -93,25 +250,74 @@ class ObjectRecognizer(Node):
           2. Shape Detection: Find contours and approximate polygons.
           3. Template Matching: Match regions of interest against template images of sign boards.
         """
-        # Example Keras model prediction template:
-        if self.model is not None:
-            try:
-                # Resize image to match model input dimensions (e.g., 150x150)
-                resized_image = cv2.resize(image, (150, 150))
-                # Add batch dimension
-                image_array = np.expand_dims(resized_image, axis=0) / 255.0  # Normalized
-                
-                predictions = self.model.predict(image_array, verbose=0)
-                # Parse predictions based on your model's classification classes
-                # Example:
-                # class_idx = np.argmax(predictions[0])
-                # if class_idx == 0:
-                #     return "STOP_SIGN"
-            except Exception as e:
-                self.get_logger().debug(f"Inference failed: {e}")
+        
 
-        # Basic OpenCV color/shape detection placeholder code:        
-        return None
+        if self.model is None:
+            return None
+
+        try:
+
+            results = self.model(
+            image,
+            imgsz=640,
+            conf=0.25,
+            iou=0.45,
+            verbose=False
+        )
+
+            detections = []
+
+            for result in results:
+
+                for box in result.boxes:
+
+                    confidence = float(box.conf)
+
+                    class_id = int(box.cls)
+
+                    label = self.model.names[class_id]
+
+                    if label in ["Left", "Right", "Straight"]:
+                        if confidence < 0.75:
+                            continue
+                    else:
+                        if confidence < 0.55:
+                            continue
+
+                    x1, y1, x2, y2 = box.xyxy[0]
+
+                    x1 = float(x1)
+                    y1 = float(y1)
+                    x2 = float(x2)
+                    y2 = float(y2)
+
+                    detections.append({
+
+                        "label": label,
+
+                        "confidence": confidence,
+
+                        "centre_x": (x1 + x2) / 2,
+
+                        "centre_y": (y1 + y2) / 2,
+
+                        "x1": x1,
+                        "y1": y1,
+                        "x2": x2,
+                        "y2": y2
+
+                    })
+                        
+
+            return detections
+
+        except Exception as e:
+
+            self.get_logger().error(
+                f"Inference failed : {e}"
+            )
+
+            return None
 
 def main(args=None):
     rclpy.init(args=args)
@@ -127,4 +333,3 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 
-print('Hello world')
