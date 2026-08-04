@@ -20,7 +20,7 @@ import math
 from sensor_msgs.msg import Joy, LaserScan
 from std_msgs.msg import String
 from synapse_msgs.msg import EdgeVectors, ServerCommunication
-from mission_controller import MissionController
+from .b3rb_mission_controller import MissionController
 
 QOS_PROFILE_DEFAULT = 10
 PI = math.pi
