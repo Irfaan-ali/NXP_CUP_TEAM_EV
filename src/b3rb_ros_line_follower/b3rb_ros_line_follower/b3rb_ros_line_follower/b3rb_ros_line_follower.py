@@ -250,8 +250,7 @@ class LineFollower(Node):
         # ----------------------------------------------------
         self.rover_move_manual_mode(speed, turn)
 
-        self.get_logger().info(
-            f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
+        self.get_logger().info(f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
 
 
     def lidar_callback(self, message):
@@ -341,11 +340,7 @@ class LineFollower(Node):
         # Debug
         # -------------------------------------------------
 
-        self.get_logger().info(
-            f"Front={front_dist:.2f}  "
-            f"Left={left_dist:.2f}  "
-            f"Right={right_dist:.2f}  "
-            f"Obstacle={self.obstacle_in_front}" )
+        self.get_logger().info(f"Front={front_dist:.2f}  " f"Left={left_dist:.2f}  " f"Right={right_dist:.2f}  " f"Obstacle={self.obstacle_in_front}" )
 
             
     def server_communication_callback(self, message):
