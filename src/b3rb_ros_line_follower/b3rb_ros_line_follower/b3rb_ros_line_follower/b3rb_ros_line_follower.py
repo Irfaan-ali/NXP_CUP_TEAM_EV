@@ -179,7 +179,7 @@ class LineFollower(Node):
 
     def edge_vectors_callback(self, message):
 
-        self.get_logger().info(f"Vectors detected : {message.vector_count}")
+        self.get_logger().debug(f"Vectors detected : {message.vector_count}")
 
         if self.obstacle_in_front:
             return
@@ -288,7 +288,7 @@ class LineFollower(Node):
         self.lane_speed = speed
         self.lane_turn = turn
 
-        self.get_logger().info(f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
+        self.get_logger().debug(f"Error={error:.1f}  Turn={turn:.2f}  Speed={speed:.2f}")
 
 
     def lidar_callback(self, message):
@@ -402,7 +402,7 @@ class LineFollower(Node):
         # Debug Information
         # -------------------------------------------------------
 
-        self.get_logger().info(
+        self.get_logger().debug(
             f"Front={front_dist:.2f}m | "
             f"Left={left_dist:.2f}m | "
             f"Right={right_dist:.2f}m | "
