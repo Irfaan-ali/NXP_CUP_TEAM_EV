@@ -114,21 +114,29 @@ class EdgeVectorsPublisher(Node):
 
             # Calculate contour vector magnitude
             magnitude = np.linalg.norm(min_y_coord - max_y_coord)
-            if (magnitude > VECTOR_MAGNITUDE_MINIMUM):
-                # Calculate distance from the camera center at the bottom of the crop
-                rover_point = [self.image_width / 2, self.lower_image_height]
-                middle_point = (min_y_coord + max_y_coord) / 2
-                distance = np.linalg.norm(middle_point - rover_point)
+            if magnitude < VECTOR_MAGNITUDE_MINIMUM:
+                continue
 
-                # Correct point coordinates based on vector slope angle
-                angle = self.get_vector_angle_in_radians([min_y_coord, max_y_coord])
-                if angle > 0:
-                    min_y_coord[0] = np.max(min_y_coords[:, 0])
-                else:
-                    max_y_coord[0] = np.max(max_y_coords[:, 0])
+            x, y, w, h = cv2.boundingRect(contours[i])
 
-                # Store vectors with distance metadata for sorting
-                vectors.append([list(min_y_coord), list(max_y_coord), distance])
+            aspect_ratio = h / float(max(w, 1))
+
+            if aspect_ratio < 2.0:
+                continue
+            # Calculate distance from the camera center at the bottom of the crop
+            rover_point = [self.image_width / 2, self.lower_image_height]
+            middle_point = (min_y_coord + max_y_coord) / 2
+            distance = np.linalg.norm(middle_point - rover_point)
+
+            # Correct point coordinates based on vector slope angle
+            angle = self.get_vector_angle_in_radians([min_y_coord, max_y_coord])
+            if angle > 0:
+                min_y_coord[0] = np.max(min_y_coords[:, 0])
+            else:
+                max_y_coord[0] = np.max(max_y_coords[:, 0])
+
+            # Store vectors with distance metadata for sorting
+            vectors.append([list(min_y_coord), list(max_y_coord), distance])
 
             # Draw all detected raw vectors in blue on the debug image
             cv2.line(image, tuple(min_y_coord), tuple(max_y_coord), BLUE_COLOR, 2)
