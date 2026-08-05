@@ -190,7 +190,7 @@ class LineFollower(Node):
         if message.vector_count == 0:
 
             # Continue slowly using previous steering
-            self.lane_speed = 0.12
+            self.lane_speed = 0.25
             self.lane_turn = self.previous_turn
 
             self.get_logger().warn("Lane Lost")
