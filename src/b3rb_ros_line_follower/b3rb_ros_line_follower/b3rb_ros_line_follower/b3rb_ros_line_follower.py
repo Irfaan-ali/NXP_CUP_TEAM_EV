@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from email.mime import message
+from email import message
 import rclpy
 from rclpy.node import Node
 import time
@@ -101,7 +103,7 @@ class LineFollower(Node):
         
         # ---------------- Lane Following parameters1 ----------------
 
-        self.center_offset = -5
+        self.center_offset = 0
 
         # Lane commands
         self.lane_speed = 0.3
@@ -122,7 +124,7 @@ class LineFollower(Node):
 
         # ---------- Lane Following Parameters ----------
 		
-        self.kp = 0.006         # Steering gain
+        self.kp = 0.01         # Steering gain
         self.max_speed = 0.45     # Maximum speed
         self.min_speed = 0.25     # Minimum speed while turning
 
@@ -132,10 +134,10 @@ class LineFollower(Node):
         self.previous_turn = 0.0
 
         # Estimated lane width in pixels (used if only one lane is detected)
-        self.lane_width_pixels = 220
+        self.lane_width_pixels = 300
 
         # Steering smoothing factor
-        self.alpha = 0.82
+        self.alpha = 0.65
 
         # State variables (You can add your own state flags / state machines here)
         self.obstacle_in_front = False
@@ -178,13 +180,23 @@ class LineFollower(Node):
 
         image_center = message.image_width / 2.0
 
+		  if message.vector_count == 1:
+            self.get_logger().info(
+            f"V1 Bottom={message.vector_1[1].x:.1f}  "
+            f"Top={message.vector_1[0].x:.1f}")
+
+        elif message.vector_count == 2:
+            self.get_logger().info(
+            f"Left={message.vector_1[1].x:.1f}  "
+            f"Right={message.vector_2[1].x:.1f}")
+
         # ----------------------------------------------------
         # NO LANE DETECTED
         # ----------------------------------------------------
         if message.vector_count == 0:
 
             # Continue slowly using previous steering
-            self.lane_speed = 0.12
+            self.lane_speed = 0.25
             self.lane_turn = self.previous_turn
 
             self.get_logger().warn("Lane Lost")
@@ -217,15 +229,25 @@ class LineFollower(Node):
 
             lane = message.vector_1
 
-            if lane[1].x < image_center:
+            bottom = lane[1].x
+            top = lane[0].x
 
-                # Left lane
-                lane_center = lane[1].x + self.lane_width_pixels / 2
+            dx = bottom - top
+
+            if dx > 5:
+                # left edge
+                lane_center = bottom + self.lane_width_pixels/2
+
+            elif dx < -5:
+                # right edge
+                lane_center = bottom - self.lane_width_pixels/2
 
             else:
-
-                # Right lane
-                lane_center = lane[1].x - self.lane_width_pixels / 2
+                # nearly vertical
+                if bottom < image_center:
+                    lane_center = bottom + self.lane_width_pixels/2
+                else:
+                    lane_center = bottom - self.lane_width_pixels/2
 
 
         # ----------------------------------------------------
