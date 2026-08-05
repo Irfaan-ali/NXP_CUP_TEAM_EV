@@ -133,7 +133,7 @@ class LineFollower(Node):
         self.previous_turn = 0.0
 
         # Estimated lane width in pixels (used if only one lane is detected)
-        self.lane_width_pixels = 220
+        self.lane_width_pixels = 280
 
         # Steering smoothing factor
         self.alpha = 0.82
