@@ -229,25 +229,30 @@ class LineFollower(Node):
 
             lane = message.vector_1
 
-            bottom = lane[1].x
-            top = lane[0].x
+            top = lane[0]
+            bottom = lane[1]
 
-            dx = bottom - top
+            # Position of detected lane
+            x = bottom.x
 
-            if dx > 5:
-                # left edge
-                lane_center = bottom + self.lane_width_pixels/2
+            # Lane direction
+            dx = bottom.x - top.x
 
-            elif dx < -5:
-                # right edge
-                lane_center = bottom - self.lane_width_pixels/2
+            # Decide whether this is the left or right lane
+            if x < image_center:
+
+                # LEFT lane detected
+                lane_center = x + self.lane_width_pixels * 0.55
+
+                # Follow the curve slightly
+                lane_center += 0.5 * dx
 
             else:
-                # nearly vertical
-                if bottom < image_center:
-                    lane_center = bottom + self.lane_width_pixels/2
-                else:
-                    lane_center = bottom - self.lane_width_pixels/2
+
+                # RIGHT lane detected
+                lane_center = x - self.lane_width_pixels * 0.55
+
+                lane_center += 0.5 * dx
 
 
         # ----------------------------------------------------
