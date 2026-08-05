@@ -21,6 +21,7 @@ import numpy as np
 import os
 
 from collections import deque, Counter
+import json
 
 # HINT: TensorFlow/Keras can be heavy and might not be installed by default.
 # We wrap the import in a try-except block so the node runs even if TensorFlow is missing.
@@ -233,7 +234,7 @@ class ObjectRecognizer(Node):
 
         msg = String()
 
-        msg.data = str(self.confirmed_pairs)
+        msg.data = json.dumps(self.confirmed_pairs)
 
         self.publisher_sign.publish(msg)
 
