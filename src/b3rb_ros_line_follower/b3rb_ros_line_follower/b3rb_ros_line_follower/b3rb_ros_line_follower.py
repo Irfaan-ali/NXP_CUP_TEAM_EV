@@ -103,7 +103,6 @@ class LineFollower(Node):
         
         # ---------------- Lane Following parameters1 ----------------
 
-
         self.center_offset = -5
 
         # Lane commands
@@ -124,6 +123,7 @@ class LineFollower(Node):
         self.back_distance = 10.0
 
         # ---------- Lane Following Parameters ----------
+		
         self.kp = 0.006         # Steering gain
         self.max_speed = 0.45     # Maximum speed
         self.min_speed = 0.25     # Minimum speed while turning
@@ -145,8 +145,9 @@ class LineFollower(Node):
         self.target_turn = 0.0
 
 		# ---------------- Mission Controller ----------------
-		self.mission = MissionController(self)
 		
+		self.mission = MissionController(self)
+
         # Timer to publish drive commands at 10Hz
         self.control_timer = self.create_timer(0.1, self.publish_drive_commands)
 
@@ -154,14 +155,13 @@ class LineFollower(Node):
 
     def publish_drive_commands(self):
         """Timer callback that periodically publishes the current speed and steer command."""
-        if self.obstacle_in_front:
+		if self.obstacle_in_front:
 			self.mission.update()
-            speed = self.avoid_speed
-            turn = self.avoid_turn
-
-        else:
-            speed = self.lane_speed
-            turn = self.lane_turn
+			speed = self.avoid_speed
+			turn = self.avoid_turn
+		else:
+			speed = self.lane_speed
+			turn = self.lane_turn
 
         self.rover_move_manual_mode(speed, turn)
         msg = Joy()
@@ -409,13 +409,7 @@ class LineFollower(Node):
     
             self.mission.update_server(message)
 
-	def send_server_packet(
-
-   	 	self,
-    	uid,
-    	ack,
-    	payload	
-	):
+	def send_server_packet(self, uid, ack, payload):
 
     	server_msg = ServerCommunication()
     	server_msg.src = 1
@@ -430,11 +424,10 @@ class LineFollower(Node):
         self.mission.update_qr(message.data)
 
     def sign_board_callback(self, message):
-        import json
+		import json
 		try:
 			sign_map = json.loads(message.data)
     		self.mission.update_sign(sign_map)
-
 		except Exception as e:
     		self.get_logger().error(f"Failed to parse sign map: {e}")
 
