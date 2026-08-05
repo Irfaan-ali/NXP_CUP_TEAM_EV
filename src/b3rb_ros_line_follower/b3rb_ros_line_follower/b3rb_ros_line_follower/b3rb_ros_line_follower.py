@@ -103,7 +103,7 @@ class LineFollower(Node):
         # ---------------- Lane Following parameters1 ----------------
 
 
-        self.center_offset = -10
+        self.center_offset = -8
 
         # Lane commands
         self.lane_speed = 0.3
