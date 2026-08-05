@@ -35,6 +35,8 @@ class QRDetector(Node):
     def __init__(self):
         super().__init__('qr_detector')
 
+        self.detector = cv2.QRCodeDetector()
+        self.last_qr = ""
         # Subscription for camera images.
         self.subscription_camera = self.create_subscription(
             CompressedImage,
@@ -59,12 +61,15 @@ class QRDetector(Node):
         qr_data = self.detect_qr_code(image)
 
         if qr_data is not None:
-            # Publish the decoded QR payload
-            msg = String()
-            msg.data = qr_data
-            self.publisher_qr.publish(msg)
-            self.get_logger().info(f"Published QR Data: {qr_data}")
-
+            if qr_data != self.last_qr:
+                self.last_qr = qr_data
+                msg = String()
+                msg.data = qr_data.strip().upper()
+                self.publisher_qr.publish(msg)
+                self.get_logger().info(
+                    f"Published QR Data: {qr_data}"
+                )
+        
     def detect_qr_code(self, image):
         """
         Detect and decode QR code in the image.
@@ -77,10 +82,11 @@ class QRDetector(Node):
         """
         # --- Method 1: Using OpenCV Built-in QR Detector ---
         try:
-            detector = cv2.QRCodeDetector()
-            data, bbox, straight_qrcode = detector.detectAndDecode(image)
-            if bbox is not None and data != "":
-                return data
+            data, bbox, straight_qrcode = self.detector.detectAndDecode(image)
+            if bbox is not None:   
+                data = data.strip()
+                if data:
+                    return data
         except Exception as e:
             self.get_logger().debug(f"OpenCV QR Detection failed: {e}")
 
