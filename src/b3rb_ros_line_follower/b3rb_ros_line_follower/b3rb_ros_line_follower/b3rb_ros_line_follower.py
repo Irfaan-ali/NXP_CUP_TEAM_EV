@@ -98,8 +98,6 @@ class LineFollower(Node):
             ServerCommunication,
             '/ServerCommunication',
             QOS_PROFILE_DEFAULT)
-
-        # ------------------ State Variables & Timer ------------------
         
         # ---------------- Lane Following parameters1 ----------------
 
@@ -154,19 +152,14 @@ class LineFollower(Node):
         self.get_logger().info("Line Follower controller initialized. Safe Drive-Straight Mode active.")
 
     def publish_drive_commands(self):
-        """Timer callback that periodically publishes the current speed and steer command."""
-		if self.obstacle_in_front:
-			self.mission.update()
-			speed = self.avoid_speed
-			turn = self.avoid_turn
-		else:
-			speed = self.lane_speed
-			turn = self.lane_turn
-
-        self.rover_move_manual_mode(speed, turn)
+		self.mission.update()
         msg = Joy()
         msg.buttons = [1, 0, 0, 0, 0, 0, 0, 1]  # Manual override button configuration
-        msg.axes = [0.0, self.target_speed, 0.0, self.target_turn]
+        msg.axes = [0.0, 
+					self.target_speed, 
+					0.0, 
+					self.target_turn
+				   ]
         self.publisher_joy.publish(msg)
 
     def rover_move_manual_mode(self, speed, turn):
@@ -393,6 +386,11 @@ class LineFollower(Node):
             # Lane follower takes control
             self.avoid_speed = 0.0
             self.avoid_turn = 0.0
+
+
+		self.mission.update_obstacle(
+   			 self.obstacle_in_front
+		)
 
         # -------------------------------------------------------
         # Debug Information
