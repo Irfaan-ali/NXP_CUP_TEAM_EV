@@ -284,21 +284,32 @@ class MissionController:
             self.follow_lane()
 
             # -------------------------------
-            # Sign Detection
+            # Sign Detection & Navigation
             # -------------------------------
             if self.sign_detected:
                 self.sign_detected = False
-                self.log(
-                 f"[MISSION] Hospital Sign Detected: {self.current_sign}"
-                )
-        # Placeholder:
-        # Person 2's navigation logic can use self.current_sign
-        # to decide whether to turn left, right or continue.
-        #
-        # Example:
-        #
-        # self.navigation.handle_hospital_sign(self.current_sign)
+                
+                # The server assigns a hospital (e.g., "HOSPITAL_A" or "A"). Extract just the target letter.
+                target_key = self.assigned_hospital.split('_')[-1] if self.assigned_hospital else None
 
+                # Check if our target exists in the JSON sign_map dictionary
+                if self.sign_map and target_key in self.sign_map:
+                    direction = self.sign_map[target_key]
+                    self.log(f"[MISSION] Sign Data JSON: Target '{target_key}' is {direction}")
+
+                    # Command the line follower by adjusting the center offset
+                    if direction == "Left":
+                        self.robot.center_offset = 200
+                        self.log("[NAV] Biasing steering to the LEFT")
+                    elif direction == "Right":
+                        self.robot.center_offset = -200
+                        self.log("[NAV] Biasing steering to the RIGHT")
+                    else: # "Straight" or fallback
+                        self.robot.center_offset = -5
+                        self.log("[NAV] Keeping STRAIGHT")
+                else:
+                    self.log(f"[MISSION] Sign Data JSON: Target '{target_key}' not yet confirmed.")
+            
             # -------------------------------
             # Hospital QR Verification
             # -------------------------------
@@ -340,6 +351,7 @@ class MissionController:
             self.assigned_hospital = None
             self.current_sign = None
             self.latest_qr = None
+            self.robot.center_offset = -5
             self.reset_server_flags()
 
             # Check if mission is complete
@@ -349,11 +361,12 @@ class MissionController:
                 self.change_state(MissionState.FOLLOW_LANE)
 
         elif self.state == MissionState.PARK:
-            self.state_entered = False
-            self.log("[MISSION] All patients delivered! Initiating parking sequence.")
-            self.park_robot()
-            self.send_server_message("PARKED")
-            self.change_state(MissionState.WAIT_PARK_ACK)
+            if self.state_entered:
+                self.state_entered = False
+                self.log("[MISSION] All patients delivered! Initiating parking sequence.")
+                self.park_robot()
+                self.send_server_message("PARKED")
+                self.change_state(MissionState.WAIT_PARK_ACK)
 
         elif self.state == MissionState.WAIT_PARK_ACK:
             self.stop_robot()
